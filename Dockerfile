@@ -46,6 +46,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
     rm -rf /var/lib/apt/lists/*
 
 USER ubuntu
+RUN npm config set prefix '~/.local/'
 
 # ============================================================
 # Rust (via rustup)
@@ -54,11 +55,21 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
     sh -s -- -y
 ENV PATH="/home/ubuntu/.rustup/bin:/home/ubuntu/.cargo/bin:${PATH}"
 RUN rustup component add rust-analyzer && \
-    cargo install uv
+    cargo install uv cargo-edit
 
 # Install ruff (not available on crates.io)
 RUN curl -sSf https://raw.githubusercontent.com/astral-sh/ruff/main/install.sh | sh
 
+RUN mkdir -p ~/.local/bin
+ENV PATH="/home/ubuntu/.local/bin/:$PATH"
+
+# ============================================================
+# Pi Coding Agent (user-local)
+# ============================================================
+RUN npm install -g @mariozechner/pi-coding-agent
+
+# Create .pi config dir (COPY runs as root, so fix ownership)
+COPY --chown=ubuntu ./models.json /home/ubuntu/.pi/agent/models.json
 
 # ============================================================
 # Cleanup & defaults
@@ -66,4 +77,4 @@ RUN curl -sSf https://raw.githubusercontent.com/astral-sh/ruff/main/install.sh |
 WORKDIR /workspace
 
 # Default shell
-CMD ["/bin/bash"]
+CMD ["pi"]
