@@ -1,0 +1,1 @@
+/home/alex/.nvm/versions/node/v24.15.0/lib/node_modules/@mariozechner/pi-coding-agent/examples/extensions/subagent/agents/scout.md

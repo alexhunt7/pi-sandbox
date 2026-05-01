@@ -41,6 +41,8 @@ RUN apt-get update && \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+ENV HOME="/root"
+
 # ============================================================
 # Node.js / npm (LTS via NodeSource)
 # ============================================================
@@ -48,7 +50,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-USER ubuntu
 RUN npm config set prefix '~/.local/'
 
 # ============================================================
@@ -56,7 +57,7 @@ RUN npm config set prefix '~/.local/'
 # ============================================================
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
     sh -s -- -y
-ENV PATH="/home/ubuntu/.rustup/bin:/home/ubuntu/.cargo/bin:${PATH}"
+ENV PATH="${HOME}/.rustup/bin:${HOME}/.cargo/bin:${PATH}"
 RUN rustup component add rust-analyzer && \
     cargo install uv cargo-edit
 
@@ -64,20 +65,15 @@ RUN rustup component add rust-analyzer && \
 RUN curl -sSf https://raw.githubusercontent.com/astral-sh/ruff/main/install.sh | sh
 
 RUN mkdir -p ~/.local/bin
-ENV PATH="/home/ubuntu/.local/bin/:$PATH"
+ENV PATH="${HOME}/.local/bin/:$PATH"
 
 # ============================================================
 # Pi Coding Agent (user-local)
 # ============================================================
-RUN npm install -g @mariozechner/pi-coding-agent
-
-# Create .pi config dir (COPY runs as root, so fix ownership)
-COPY --chown=ubuntu ./models.json /home/ubuntu/.pi/agent/models.json
+ENV PI_VERSION=0.71.1
+RUN npm install -g "@mariozechner/pi-coding-agent@${PI_VERSION}"
 
 # ============================================================
 # Cleanup & defaults
 # ============================================================
 WORKDIR /workspace
-
-# Default shell
-CMD ["pi"]

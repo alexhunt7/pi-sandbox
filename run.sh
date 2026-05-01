@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -exuo pipefail
 
-# Run the pi-sandbox container with host networking and current directory mounted
+script_dir="$(dirname "$(realpath "$0")")"
+
 podman run -it --rm \
     --net host \
-    --userns=keep-id \
-    -v "$(pwd)":/workspace \
+    -v "${script_dir}/agent:/root/.pi/agent" \
+    -v "$(pwd):/workspace" \
     pi-sandbox "$@"

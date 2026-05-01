@@ -1,0 +1,20 @@
+{
+  "defaultPolicy": {
+    "tools": "ask",
+    "bash": "ask",
+    "mcp": "ask",
+    "skills": "ask",
+    "special": "ask"
+  },
+  "tools": {
+    "read": "allow",
+    "write": "ask",
+    "edit": "ask"
+  },
+  "bash": {
+    "git status": "allow",
+    "git diff": "allow",
+    "git log *": "allow",
+    "git *": "ask"
+  }
+}
