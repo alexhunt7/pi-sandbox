@@ -11,7 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Build essentials & common tools
     build-essential \
     curl \
+    fd-find \
     git \
+    ripgrep \
     wget \
     ca-certificates \
     gnupg \
@@ -25,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libbz2-dev \
     liblzma-dev \
     zlib1g-dev \
+    && ln -sf /usr/bin/fd-find /usr/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================================
