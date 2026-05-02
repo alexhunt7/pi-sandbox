@@ -14,9 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Build essentials & common tools
     build-essential \
     curl \
-    fd-find \
     git \
-    ripgrep \
     wget \
     ca-certificates \
     gnupg \
