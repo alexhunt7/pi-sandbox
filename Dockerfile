@@ -56,11 +56,14 @@ RUN npm config set prefix '~/.local/'
 # ============================================================
 # Rust (via rustup)
 # ============================================================
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y
 ENV PATH="${HOME}/.rustup/bin:${HOME}/.cargo/bin:${PATH}"
-RUN rustup component add rust-analyzer && \
-    cargo install uv cargo-edit
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y && \
+    rustup component add rust-analyzer
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && \
+    cargo binstall -y \
+        uv \
+        cargo-edit
 
 # Install ruff (not available on crates.io)
 RUN curl -sSf https://raw.githubusercontent.com/astral-sh/ruff/main/install.sh | sh
