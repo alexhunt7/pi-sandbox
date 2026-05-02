@@ -5,9 +5,12 @@ FROM ubuntu:26.04
 
 # Avoid interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Lisbon
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Timezone data
+    tzdata \
     # Build essentials & common tools
     build-essential \
     curl \
