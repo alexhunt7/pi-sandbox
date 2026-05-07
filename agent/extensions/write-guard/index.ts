@@ -7,6 +7,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { Text } from "@mariozechner/pi-tui";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -39,7 +40,7 @@ export default function (pi: ExtensionAPI) {
           `retry Write; it will be refused again.`;
         return {
           content: [{ type: "text", text: recipe }],
-          details: {},
+          details: { blocked: true },
           isError: true,
         };
       }
@@ -55,10 +56,32 @@ export default function (pi: ExtensionAPI) {
       } catch (e) {
         return {
           content: [{ type: "text", text: `Error: ${(e as Error).message}` }],
-          details: {},
+          details: { error: true },
           isError: true,
         };
       }
+    },
+
+    renderCall(args, theme, _context) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("write ")) + theme.fg("accent", args.file_path),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, { isPartial }, theme, _context) {
+      if (isPartial) {
+        return new Text(theme.fg("warning", "Writing..."), 0, 0);
+      }
+      const details = result.details as { blocked?: boolean; error?: boolean } | undefined;
+      if (details?.blocked) {
+        return new Text(theme.fg("warning", "blocked — file exists"), 0, 0);
+      }
+      if (details?.error) {
+        return new Text(theme.fg("error", "error"), 0, 0);
+      }
+      return new Text(theme.fg("success", "created"), 0, 0);
     },
   });
 }
