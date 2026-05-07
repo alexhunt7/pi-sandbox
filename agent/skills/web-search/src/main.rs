@@ -1,19 +1,22 @@
 use clap::{Parser, Subcommand};
-use regex::Regex;
 use scraper::{Html, Selector};
-use std::borrow::Cow;
+use web_search::{Client, SearchQuery, TimeRange};
 use std::process;
 
 #[derive(Parser)]
-#[command(name = "web-search", about = "Web search and URL text extraction")]
+#[command(name = "web-search", about = "Web search via SearXNG and URL text extraction")]
 struct Cli {
+    /// SearXNG instance URL
+    #[arg(long, env = "SEARXNG_URL", default_value = "http://127.0.0.1:9000")]
+    url: String,
+
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Search the web via DuckDuckGo
+    /// Search the web via SearXNG
     Search {
         /// Search query
         query: String,
@@ -26,12 +29,12 @@ enum Commands {
         #[arg(long, default_value = "auto")]
         lang: String,
 
-        /// Region code
+        /// Region code (mapped to language if not "auto")
         #[arg(long, default_value = "auto")]
         region: String,
 
         /// Time filter
-        #[arg(long, value_parser = ["day", "week", "month", "today", "year"])]
+        #[arg(long, value_parser = ["day", "month", "today", "year"])]
         fresh: Option<String>,
 
         /// Extract page content for top result
@@ -72,7 +75,8 @@ struct SearchResult {
     snippet: String,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
@@ -85,14 +89,18 @@ fn main() {
             extract,
             extract_all,
             json,
-        } => run_search(&query, max, &lang, &region, fresh.as_deref(), extract, extract_all, json),
-        Commands::Fetch { url, max, title, source } => run_fetch(&url, max, title, source),
+        } => {
+            run_search(&cli.url, &query, max, &lang, &region, fresh.as_deref(), extract, extract_all, json)
+                .await
+        }
+        Commands::Fetch { url, max, title, source } => run_fetch(&url, max, title, source).await,
     }
 }
 
 // ---- Search ----
 
-fn run_search(
+async fn run_search(
+    base_url: &str,
     query: &str,
     max_results: usize,
     lang: &str,
@@ -102,14 +110,69 @@ fn run_search(
     extract_all: bool,
     json: bool,
 ) {
-    let results = search_ddg(query, max_results, lang, region, fresh);
+    let client = match Client::new(base_url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        }
+    };
+
+    // Build language string: combine lang+region if set
+    let language = if lang != "auto" || region != "auto" {
+        let mut parts = Vec::new();
+        if lang != "auto" {
+            parts.push(lang.to_string());
+        }
+        if region != "auto" {
+            parts.push(region.to_string());
+        }
+        Some(parts.join("-"))
+    } else {
+        None
+    };
+
+    // Map fresh to TimeRange
+    let time_range = match fresh {
+        Some("day") | Some("today") => Some(TimeRange::Day),
+        Some("month") => Some(TimeRange::Month),
+        Some("year") => Some(TimeRange::Year),
+        _ => None,
+    };
+
+    let mut search_query = SearchQuery::new(query);
+    if let Some(lang) = &language {
+        search_query.language = Some(lang.clone());
+    }
+    if let Some(tr) = time_range {
+        search_query.time_range = Some(tr);
+    }
+
+    let resp = match client.search(search_query).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        }
+    };
+
+    let results: Vec<SearchResult> = resp
+        .results
+        .into_iter()
+        .take(max_results)
+        .map(|r| SearchResult {
+            title: r.title,
+            link: r.url.unwrap_or_default(),
+            snippet: r.content,
+        })
+        .collect();
 
     if results.is_empty() {
         process::exit(1);
     }
 
     if extract {
-        if let Some(html) = fetch_html(&results[0].link) {
+        if let Some(html) = fetch_html(&results[0].link).await {
             let text = extract_text(&html);
             println!("\n--- Content from: {} ---\n", results[0].link);
             println!("{}", text);
@@ -119,7 +182,7 @@ fn run_search(
 
     if extract_all {
         for (i, r) in results.iter().enumerate() {
-            if let Some(html) = fetch_html(&r.link) {
+            if let Some(html) = fetch_html(&r.link).await {
                 let text = extract_text(&html);
                 println!("\n--- {}. {} ---\n", i + 1, r.title);
                 println!("{}", text);
@@ -142,15 +205,18 @@ fn run_search(
     }
 }
 
-fn run_fetch(url: &str, max_chars: usize, title: bool, source: bool) {
-    let html = match fetch_html(url) {
+// ---- Fetch ----
+
+async fn run_fetch(url: &str, max_chars: usize, title: bool, source: bool) {
+    let html = match fetch_html(url).await {
         Some(h) => h,
         None => process::exit(1),
     };
 
     let text = extract_text(&html);
     let text = if text.len() > max_chars {
-        let end = text.char_indices()
+        let end = text
+            .char_indices()
             .nth(max_chars)
             .map(|(i, _)| i)
             .unwrap_or(text.len());
@@ -172,122 +238,18 @@ fn run_fetch(url: &str, max_chars: usize, title: bool, source: bool) {
     println!("{}", text);
 }
 
-// ---- DuckDuckGo Search ----
-
-fn search_ddg(
-    query: &str,
-    max_results: usize,
-    lang: &str,
-    region: &str,
-    fresh: Option<&str>,
-) -> Vec<SearchResult> {
-    let mut url = format!("https://html.duckduckgo.com/html/?q={}", url_encode(query));
-    if lang != "auto" {
-        url.push_str("&df=");
-        url.push_str(lang);
-    }
-    if region != "auto" {
-        url.push_str("&kl=");
-        url.push_str(&region.replace("-", ""));
-    }
-    if let Some(f) = fresh {
-        let m: std::collections::HashMap<&str, &str> = [
-            ("day", "d"), ("week", "w"), ("month", "m"),
-            ("today", "t"), ("year", "y"),
-        ].iter().cloned().collect();
-        url.push_str(&format!("&rank={}", m.get(f).copied().unwrap_or("d")));
-    }
-
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
-        .gzip(true)
-        .build()
-        .unwrap();
-
-    let resp = match client.get(&url).send() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Error: DuckDuckGo request failed: {}", e);
-            return vec![];
-        }
-    };
-
-    let html = match resp.text() {
-        Ok(h) => h,
-        Err(e) => {
-            eprintln!("Error reading response: {}", e);
-            return vec![];
-        }
-    };
-
-    let document = Html::parse_document(&html);
-    let link_sel = Selector::parse(r#"a.result__a"#).unwrap();
-    let snippet_sel = Selector::parse(r#"a.result__snippet"#).unwrap();
-
-    let mut results = Vec::new();
-    for link_el in document.select(&link_sel) {
-        let raw_link = link_el.value().attr("href").unwrap_or("");
-        let link = resolve_ddg_link(raw_link);
-        let title = link_el.text().collect::<String>();
-        let title = collapse_whitespace(&title);
-        let snippet = find_snippet_ahead(&document, &link_el, &snippet_sel);
-
-        if !title.is_empty() && !link.is_empty() {
-            results.push(SearchResult { title, link, snippet });
-            if results.len() >= max_results {
-                break;
-            }
-        }
-    }
-
-    results
-}
-
-fn find_snippet_ahead<'a>(
-    document: &'a Html,
-    link_el: &scraper::ElementRef<'a>,
-    snippet_sel: &Selector,
-) -> String {
-    let target_href = link_el.value().attr("href").unwrap_or("");
-    let all_a = Selector::parse("a").unwrap();
-    let mut anchors: Vec<(usize, &str, bool)> = Vec::new();
-    for (i, el) in document.select(&all_a).enumerate() {
-        let href = el.value().attr("href").unwrap_or("");
-        let classes = el.value().attr("class").unwrap_or("");
-        let is_snippet = classes.contains("result__snippet");
-        anchors.push((i, href, is_snippet));
-    }
-
-    for (i, (_, href, is_snip)) in anchors.iter().enumerate() {
-        if *is_snip || *href != target_href {
-            continue;
-        }
-        for (j, (_, _, is_snip)) in anchors.iter().enumerate().skip(i + 1) {
-            if *is_snip {
-                if let Some(snip_el) = document.select(snippet_sel).nth(j) {
-                    return collapse_whitespace(&snip_el.text().collect::<String>());
-                }
-            }
-        }
-        break;
-    }
-    String::new()
-}
-
 // ---- HTML Fetching ----
 
-fn fetch_html(url: &str) -> Option<String> {
-    let url = resolve_ddg_link(url);
-
-    let client = reqwest::blocking::Client::builder()
+async fn fetch_html(url: &str) -> Option<String> {
+    let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
         .gzip(true)
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .unwrap();
 
-    match client.get(&url).send() {
-        Ok(resp) => resp.text().ok(),
+    match client.get(url).send().await {
+        Ok(resp) => resp.text().await.ok(),
         Err(e) => {
             eprintln!("Error fetching {}: {}", url, e);
             None
@@ -295,20 +257,10 @@ fn fetch_html(url: &str) -> Option<String> {
     }
 }
 
-fn resolve_ddg_link(link: &str) -> String {
-    let decoded = url_decode(link);
-    let re = UDDG_RE.get_or_init(|| Regex::new(r"uddg=([^&]+)").unwrap());
-    if let Some(caps) = re.captures(&decoded) {
-        return url_decode(&caps[1]);
-    }
-    decoded
-}
-
 // ---- Text Extraction ----
 
-const SKIP_TAGS: &[&str] = &[
-    "script", "style", "noscript", "iframe", "nav", "footer", "header",
-];
+const SKIP_TAGS: &[&str] =
+    &["script", "style", "noscript", "iframe", "nav", "footer", "header"];
 
 fn extract_text(html: &str) -> String {
     let document = Html::parse_document(html);
@@ -349,16 +301,6 @@ fn extract_title(html: &str) -> Option<String> {
 
 // ---- Helpers ----
 
-static UDDG_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-
-fn url_encode(s: &str) -> String {
-    urlencoding::encode(s).to_string()
-}
-
-fn url_decode(s: &str) -> String {
-    urlencoding::decode(s).unwrap_or_else(|_| Cow::Borrowed(s)).into_owned()
-}
-
 fn collapse_whitespace(s: &str) -> String {
     let mut result = String::new();
     let mut prev_space = false;
@@ -380,7 +322,8 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        let end = s.char_indices()
+        let end = s
+            .char_indices()
             .nth(max)
             .map(|(i, _)| i)
             .unwrap_or(s.len());
