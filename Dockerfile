@@ -28,7 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libbz2-dev \
     liblzma-dev \
     zlib1g-dev \
-    && ln -sf /usr/bin/fd-find /usr/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================================
@@ -51,7 +50,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-RUN npm config set prefix '~/.local/'
+RUN npm config set prefix "${HOME}/.local/"
 
 # ============================================================
 # Rust (via rustup)
