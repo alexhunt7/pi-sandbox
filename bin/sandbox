@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -exuo pipefail
 
-script_dir="$(dirname "$(realpath "$0")")"
+repo_dir="$(dirname $(dirname "$(realpath "$0")"))"
 workdir="$(pwd)"
 
 extra_mount_args=()
@@ -15,9 +15,9 @@ if [[ -n "${EXTRA_MOUNTS:-}" ]]; then
     done
 fi
 
-podman run -it --rm \
+exec podman run -it --rm \
     --net host \
-    -v "${script_dir}/agent:/root/.pi/agent" \
+    -v "${repo_dir}/agent:/root/.pi/agent" \
     -v "${workdir}:${workdir}" \
     ${extra_mount_args[@]+"${extra_mount_args[@]}"} \
     --workdir "${workdir}" \

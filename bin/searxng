@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$(realpath "$0")")"
+cd "$(dirname "$(dirname "$(realpath "$0")")")/searxng"
 
 trap 'podman-compose down -v' EXIT
 
