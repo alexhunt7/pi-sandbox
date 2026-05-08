@@ -3,7 +3,29 @@ set -euo pipefail
 
 cd "$(dirname "$(dirname "$(realpath "$0")")")/searxng"
 
-trap 'podman-compose down -v' EXIT
+source .env
 
-podman-compose up -d
-podman-compose logs -f
+cleanup() {
+    set +e
+    if [[ -n "${COMPOSE_PID:-}" ]]; then
+        kill "${COMPOSE_PID}"
+        wait "${COMPOSE_PID}"
+    fi
+    podman-compose down -v
+}
+trap cleanup EXIT
+
+podman-compose up &
+COMPOSE_PID=$!
+
+
+if [[ -n "${NOTIFY_SOCKET:-}" ]]; then
+    while ! curl -sf "http://${SEARXNG_HOST:-127.0.0.1}:${SEARXNG_PORT:-9000}/healthz"; do
+        sleep 1
+    done
+
+    systemd-notify --ready
+fi
+
+
+wait $COMPOSE_PID

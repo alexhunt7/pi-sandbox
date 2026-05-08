@@ -1,0 +1,18 @@
+[Unit]
+Description=SearXNG Instance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+
+ExecStart=/home/alex/git/pi-sandbox/bin/searxng
+
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=90
+
+[Install]
+WantedBy=default.target
