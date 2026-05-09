@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -exuo pipefail
+set -euo pipefail
 
 repo_dir="$(dirname $(dirname "$(realpath "$0")"))"
 workdir="$(pwd)"
