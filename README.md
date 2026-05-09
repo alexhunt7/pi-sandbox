@@ -1,4 +1,4 @@
-# pi-sandbox
+# agent-sandbox
 
 Containerized development sandbox for the [pi coding agent](https://github.com/earendil-works/pi-coding-agent). Provides a clean, reproducible environment with Python, Node.js, Rust, and pi pre-installed.
 
@@ -15,7 +15,7 @@ Containerized development sandbox for the [pi coding agent](https://github.com/e
 ### Build the image
 
 ```bash
-podman build -t pi-sandbox .
+podman build -t agent-sandbox .
 ```
 
 ### Run the agent

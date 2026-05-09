@@ -21,4 +21,4 @@ exec podman run -it --rm \
     -v "${workdir}:${workdir}" \
     ${extra_mount_args[@]+"${extra_mount_args[@]}"} \
     --workdir "${workdir}" \
-    pi-sandbox "$@"
+    agent-sandbox "$@"
