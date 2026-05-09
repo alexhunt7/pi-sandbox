@@ -19,9 +19,15 @@ export function assessResponse(
   toolCalls: ToolCall[],
   recentToolCalls: ToolCall[],
   knownTools: Set<string>,
+  providerStatus?: number,
 ): QualityResult {
   // 1. Empty response with no tool calls
+  //    Skip if the provider returned a non-2xx status or we have no status
+  //    (request failed) — no point correcting a model that couldn't respond.
   if (!text.trim() && toolCalls.length === 0) {
+    if (providerStatus === undefined || providerStatus < 200 || providerStatus >= 300) {
+      return { ok: true }; // server error, not a model quality issue
+    }
     return { ok: false, reason: "empty_response" };
   }
 

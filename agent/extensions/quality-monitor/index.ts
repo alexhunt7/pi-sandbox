@@ -7,6 +7,9 @@
  *
  * Detects: empty responses, unknown tools, repeated tool calls (loops),
  * malformed arguments.
+ *
+ * Skips empty_response correction when the model server failed (non-2xx HTTP
+ * status or request error) — no point correcting a model that couldn't respond.
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { assessResponse, buildCorrectionMessage, type ToolCall } from "./quality.ts";
@@ -16,6 +19,10 @@ import { assessResponse, buildCorrectionMessage, type ToolCall } from "./quality
 let previousToolCalls: ToolCall[] = [];
 let consecutiveFailures = 0;
 const MAX_CONSECUTIVE_CORRECTIONS = 2; // stop nudging after 2 failed corrections
+
+// Track last provider response status. Set via after_provider_response.
+// undefined means we have no status info (request may have failed before response).
+let lastProviderStatus: number | undefined = undefined;
 
 export default function (pi: ExtensionAPI) {
   // Populate the known-tools set lazily by observing tool_execution events.
@@ -29,6 +36,12 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async () => {
     previousToolCalls = [];
     consecutiveFailures = 0;
+    lastProviderStatus = undefined;
+  });
+
+  // Track HTTP status so we can distinguish server failures from real empty responses.
+  pi.on("after_provider_response", (event) => {
+    lastProviderStatus = (event as any).status;
   });
 
   pi.on("turn_end", async (event, ctx) => {
@@ -45,10 +58,11 @@ export default function (pi: ExtensionAPI) {
       .filter((c: any) => c?.type === "toolCall")
       .map((c: any) => ({ name: c.name, input: c.arguments ?? c.input ?? {} }));
 
-    const verdict = assessResponse(text, currentCalls, previousToolCalls, knownTools);
+    const verdict = assessResponse(text, currentCalls, previousToolCalls, knownTools, lastProviderStatus);
 
     // Update rolling state for next turn regardless of verdict
     previousToolCalls = currentCalls;
+    lastProviderStatus = undefined;
 
     if (verdict.ok) {
       consecutiveFailures = 0;
