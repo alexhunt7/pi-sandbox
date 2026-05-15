@@ -7,6 +7,7 @@
       "models": [
         {
           "id": "Qwen3.6-27B",
+          "contextWindow": 98304,
           "input": [
             "text",
             "image"
